@@ -125,12 +125,10 @@ create policy "profiles_select_own_or_manager"
   to authenticated
   using (id = auth.uid() or public.is_fabmanager());
 
-drop policy if exists "profiles_update_own" on public.profiles;
-create policy "profiles_update_own"
-  on public.profiles for update
-  to authenticated
-  using (id = auth.uid())
-  with check (id = auth.uid() and role = (select p.role from public.profiles p where p.id = auth.uid()));
+-- Pas de UPDATE profil côté client (le rôle ne se change que dans le dashboard SQL)
+
+grant execute on function public.is_fabmanager() to authenticated;
+grant execute on function public.handle_new_user() to postgres, service_role;
 
 -- machines : lecture publique, écriture FabManager
 drop policy if exists "machines_select_all" on public.machines;
@@ -173,6 +171,11 @@ select id, machine_id, start_time, end_time, status
 from public.reservations
 where status in ('en_attente', 'confirmee');
 
+grant usage on schema public to anon, authenticated;
+grant select on public.machines to anon, authenticated;
+grant select, insert, update, delete on public.machines to authenticated;
+grant select, insert, update on public.reservations to authenticated;
+grant select on public.profiles to authenticated;
 grant select on public.reservation_slots to anon, authenticated;
 
 drop policy if exists "reservations_insert_own" on public.reservations;
@@ -188,7 +191,11 @@ drop policy if exists "reservations_update_own_cancel" on public.reservations;
 create policy "reservations_update_own_cancel"
   on public.reservations for update
   to authenticated
-  using (user_id = auth.uid())
+  using (
+    user_id = auth.uid()
+    and status in ('en_attente', 'confirmee')
+    and start_time > now()
+  )
   with check (
     user_id = auth.uid()
     and status = 'annulee'

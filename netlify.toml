@@ -1,0 +1,4 @@
+# Site 100 % statique — pas de build
+[build]
+  publish = "."
+  command = "echo 'static'"
