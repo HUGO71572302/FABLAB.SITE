@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Connexion — FabLab</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-stone-100 text-stone-900 min-h-screen">
+  <div id="nav"></div>
+  <main class="max-w-md mx-auto px-4 py-10">
+    <div class="bg-white border border-stone-200 rounded-2xl p-6 shadow-sm">
+      <h1 class="text-xl font-bold">Espace FabLab</h1>
+      <p class="text-sm text-stone-600 mt-1">Inscription par email. Le premier compte reste « élève » jusqu’à promotion FabManager dans Supabase.</p>
+      <div class="mt-4 grid grid-cols-2 gap-2 p-1 bg-stone-100 rounded-lg">
+        <button type="button" id="tab-login" class="py-2 rounded-md text-sm font-semibold bg-white shadow">Connexion</button>
+        <button type="button" id="tab-signup" class="py-2 rounded-md text-sm font-medium text-stone-600">Inscription</button>
+      </div>
+      <p id="msg" class="hidden mt-4"></p>
+      <form id="login" class="mt-4 space-y-3">
+        <label class="block text-sm font-medium">Email
+          <input type="email" required autocomplete="email" class="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
+        </label>
+        <label class="block text-sm font-medium">Mot de passe
+          <input type="password" required minlength="6" autocomplete="current-password" class="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
+        </label>
+        <button class="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2.5 rounded-lg">Se connecter</button>
+      </form>
+      <form id="signup" class="mt-4 space-y-3 hidden">
+        <div class="grid grid-cols-2 gap-3">
+          <label class="block text-sm font-medium">Prénom
+            <input name="first" required class="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
+          </label>
+          <label class="block text-sm font-medium">Nom
+            <input name="last" required class="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
+          </label>
+        </div>
+        <label class="block text-sm font-medium">Email
+          <input type="email" name="email" required class="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
+        </label>
+        <label class="block text-sm font-medium">Mot de passe (6 caractères min.)
+          <input type="password" name="password" required minlength="6" class="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
+        </label>
+        <button class="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2.5 rounded-lg">Créer mon compte</button>
+      </form>
+    </div>
+  </main>
+  <div id="footer"></div>
+  <script src="js/config.js"></script>
+  <script type="module">
+    import { supabase, supabaseReady, getSession, renderNav, bindNav, requireConfigBanner, toast, layoutShell } from "./js/app.js";
+    requireConfigBanner();
+    const { user, profile } = await getSession();
+    document.getElementById("nav").innerHTML = renderNav("auth", { user, profile });
+    document.getElementById("footer").innerHTML = layoutShell();
+    bindNav();
+    if (user) location.replace("mes-reservations.html");
+    const loginF = document.getElementById("login");
+    const signupF = document.getElementById("signup");
+    const tabL = document.getElementById("tab-login");
+    const tabS = document.getElementById("tab-signup");
+    tabL.onclick = () => {
+      loginF.classList.remove("hidden");
+      signupF.classList.add("hidden");
+      tabL.className = "py-2 rounded-md text-sm font-semibold bg-white shadow";
+      tabS.className = "py-2 rounded-md text-sm font-medium text-stone-600";
+    };
+    tabS.onclick = () => {
+      signupF.classList.remove("hidden");
+      loginF.classList.add("hidden");
+      tabS.className = "py-2 rounded-md text-sm font-semibold bg-white shadow";
+      tabL.className = "py-2 rounded-md text-sm font-medium text-stone-600";
+    };
+    const msg = document.getElementById("msg");
+    loginF.onsubmit = async (e) => {
+      e.preventDefault();
+      if (!supabaseReady) return toast(msg, "Configure js/config.js");
+      const [email, password] = [...loginF.querySelectorAll("input")].map((i) => i.value);
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) toast(msg, error.message);
+      else location.href = "mes-reservations.html";
+    };
+    signupF.onsubmit = async (e) => {
+      e.preventDefault();
+      if (!supabaseReady) return toast(msg, "Configure js/config.js");
+      const fd = new FormData(signupF);
+      const { data, error } = await supabase.auth.signUp({
+        email: fd.get("email"),
+        password: fd.get("password"),
+        options: { data: { first_name: fd.get("first"), last_name: fd.get("last") } }
+      });
+      if (error) return toast(msg, error.message);
+      if (data.session) location.href = "mes-reservations.html";
+      else toast(msg, "Compte créé. Confirme l’email si demandé, puis connecte-toi.", true);
+    };
+  </script>
+</body>
+</html>

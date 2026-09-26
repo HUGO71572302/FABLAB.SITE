@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mes réservations — FabLab</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-stone-100 text-stone-900 min-h-screen">
+  <div id="nav"></div>
+  <main class="max-w-3xl mx-auto px-4 py-8">
+    <h1 class="text-2xl font-bold">Mes réservations</h1>
+    <p id="hello" class="text-stone-600 mt-1"></p>
+    <p id="msg" class="hidden mt-3"></p>
+    <div id="list" class="mt-6 space-y-3"></div>
+  </main>
+  <div id="footer"></div>
+  <script src="js/config.js"></script>
+  <script type="module">
+    import {
+      supabase, supabaseReady, getSession, renderNav, bindNav, requireConfigBanner,
+      toast, layoutShell, statusBadge, fmtDate, escapeHtml
+    } from "./js/app.js";
+    requireConfigBanner();
+    const { user, profile } = await getSession();
+    document.getElementById("nav").innerHTML = renderNav("mine", { user, profile });
+    document.getElementById("footer").innerHTML = layoutShell();
+    bindNav();
+    if (!user) location.href = "connexion.html";
+    else {
+      document.getElementById("hello").textContent = profile
+        ? `${profile.first_name} ${profile.last_name} · ${profile.role === "fabmanager" ? "FabManager" : "Élève / enseignant"}`
+        : "";
+      const { data, error } = await supabase
+        .from("reservations")
+        .select("*, machines(name)")
+        .eq("user_id", user.id)
+        .order("start_time", { ascending: false });
+      const msg = document.getElementById("msg");
+      if (error) toast(msg, error.message);
+      const now = Date.now();
+      document.getElementById("list").innerHTML =
+        (data || [])
+          .map((r) => {
+            const upcoming = new Date(r.start_time).getTime() > now && (r.status === "en_attente" || r.status === "confirmee");
+            return `<article class="bg-white border border-stone-200 rounded-xl p-4">
+              <div class="flex flex-wrap justify-between gap-2">
+                <h2 class="font-semibold">${escapeHtml(r.machines?.name || "Machine")}</h2>
+                ${statusBadge(r.status)}
+              </div>
+              <p class="text-sm text-stone-600 mt-1">${fmtDate(r.start_time)} → ${fmtDate(r.end_time)}</p>
+              <p class="text-sm mt-2">${escapeHtml(r.goal)}</p>
+              ${r.refusal_reason ? `<p class="text-sm text-red-700 mt-2">Motif : ${escapeHtml(r.refusal_reason)}</p>` : ""}
+              ${upcoming ? `<button data-id="${r.id}" class="cancel mt-3 text-sm font-semibold text-orange-700">Annuler</button>` : ""}
+            </article>`;
+          })
+          .join("") || "<p class='text-stone-500'>Aucune réservation.</p>";
+      document.querySelectorAll(".cancel").forEach((btn) => {
+        btn.onclick = async () => {
+          const { error: uerr } = await supabase.from("reservations").update({ status: "annulee" }).eq("id", btn.dataset.id);
+          if (uerr) toast(msg, uerr.message);
+          else location.reload();
+        };
+      });
+    }
+  </script>
+</body>
+</html>

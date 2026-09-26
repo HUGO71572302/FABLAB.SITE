@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FabManager — FabLab</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-stone-100 text-stone-900 min-h-screen">
+  <div id="nav"></div>
+  <main class="max-w-5xl mx-auto px-4 py-8">
+    <h1 class="text-2xl font-bold">Espace FabManager</h1>
+    <p id="msg" class="hidden mt-3"></p>
+    <section class="mt-8">
+      <div class="flex items-center justify-between gap-3">
+        <h2 class="text-lg font-semibold">Machines</h2>
+        <button id="add-m" class="bg-orange-500 text-white text-sm font-semibold px-3 py-2 rounded-lg">Ajouter</button>
+      </div>
+      <div id="machines" class="mt-4 space-y-2"></div>
+    </section>
+    <section class="mt-10">
+      <h2 class="text-lg font-semibold">File d’attente</h2>
+      <div id="queue" class="mt-4 space-y-3"></div>
+    </section>
+  </main>
+  <dialog id="dlg" class="rounded-2xl p-0 w-[min(100%,28rem)] backdrop:bg-stone-900/40">
+    <form id="mform" class="p-5 space-y-3">
+      <h3 class="font-bold" id="dtitle">Machine</h3>
+      <input type="hidden" name="id" />
+      <input name="name" required placeholder="Nom" class="w-full rounded-lg border border-stone-300 px-3 py-2" />
+      <input name="category" required placeholder="Catégorie" class="w-full rounded-lg border border-stone-300 px-3 py-2" />
+      <textarea name="description" placeholder="Description" class="w-full rounded-lg border border-stone-300 px-3 py-2"></textarea>
+      <textarea name="safety_rules" placeholder="Règles de sécurité" class="w-full rounded-lg border border-stone-300 px-3 py-2"></textarea>
+      <select name="status" class="w-full rounded-lg border border-stone-300 px-3 py-2">
+        <option value="disponible">Disponible</option>
+        <option value="panne">En panne</option>
+        <option value="maintenance">Maintenance</option>
+      </select>
+      <input name="level_required" placeholder="Niveau requis" class="w-full rounded-lg border border-stone-300 px-3 py-2" />
+      <input name="max_duration_minutes" type="number" min="15" step="15" value="60" class="w-full rounded-lg border border-stone-300 px-3 py-2" />
+      <div class="flex gap-2 justify-end">
+        <button type="button" id="dcancel" class="px-3 py-2 text-sm">Annuler</button>
+        <button class="bg-orange-500 text-white font-semibold px-4 py-2 rounded-lg text-sm">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+  <div id="footer"></div>
+  <script src="js/config.js"></script>
+  <script type="module">
+    import {
+      supabase, getSession, renderNav, bindNav, requireConfigBanner,
+      toast, layoutShell, statusBadge, fmtDate, escapeHtml
+    } from "./js/app.js";
+    requireConfigBanner();
+    const { user, profile } = await getSession();
+    document.getElementById("nav").innerHTML = renderNav("mgr", { user, profile });
+    document.getElementById("footer").innerHTML = layoutShell();
+    bindNav();
+    const msg = document.getElementById("msg");
+    if (!user) location.href = "connexion.html";
+    else if (profile?.role !== "fabmanager") {
+      document.querySelector("main").innerHTML = "<p class='text-stone-700'>Accès réservé au FabManager. Demande une promotion du rôle dans Supabase (table <code>profiles</code>).</p>";
+    } else {
+      async function loadMachines() {
+        const { data, error } = await supabase.from("machines").select("*").order("name");
+        if (error) return toast(msg, error.message);
+        document.getElementById("machines").innerHTML = (data || [])
+          .map(
+            (m) => `<div class="flex flex-wrap items-center justify-between gap-2 bg-white border border-stone-200 rounded-xl px-4 py-3">
+              <div><p class="font-medium">${escapeHtml(m.name)}</p><p class="text-xs text-stone-500">${escapeHtml(m.category)}</p></div>
+              <div class="flex items-center gap-2">
+                ${statusBadge(m.status)}
+                <button data-edit="${m.id}" class="text-sm font-semibold text-orange-700">Modifier</button>
+                <button data-del="${m.id}" class="text-sm text-red-700">Supprimer</button>
+              </div>
+            </div>`
+          )
+          .join("");
+        document.querySelectorAll("[data-edit]").forEach((b) => {
+          b.onclick = () => openForm(data.find((x) => x.id === b.dataset.edit));
+        });
+        document.querySelectorAll("[data-del]").forEach((b) => {
+          b.onclick = async () => {
+            if (!confirm("Supprimer cette machine ?")) return;
+            const { error: derr } = await supabase.from("machines").delete().eq("id", b.dataset.del);
+            if (derr) toast(msg, derr.message);
+            else loadMachines();
+          };
+        });
+      }
+      const dlg = document.getElementById("dlg");
+      const form = document.getElementById("mform");
+      function openForm(m) {
+        form.reset();
+        document.getElementById("dtitle").textContent = m ? "Modifier" : "Nouvelle machine";
+        if (m) {
+          form.id.value = m.id;
+          form.name.value = m.name;
+          form.category.value = m.category;
+          form.description.value = m.description;
+          form.safety_rules.value = m.safety_rules;
+          form.status.value = m.status;
+          form.level_required.value = m.level_required;
+          form.max_duration_minutes.value = m.max_duration_minutes;
+        } else form.id.value = "";
+        dlg.showModal();
+      }
+      document.getElementById("add-m").onclick = () => openForm(null);
+      document.getElementById("dcancel").onclick = () => dlg.close();
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+        const row = {
+          name: form.name.value,
+          category: form.category.value,
+          description: form.description.value,
+          safety_rules: form.safety_rules.value,
+          status: form.status.value,
+          level_required: form.level_required.value || "débutant",
+          max_duration_minutes: Number(form.max_duration_minutes.value)
+        };
+        const q = form.id.value
+          ? supabase.from("machines").update(row).eq("id", form.id.value)
+          : supabase.from("machines").insert(row);
+        const { error } = await q;
+        if (error) toast(msg, error.message);
+        else {
+          dlg.close();
+          loadMachines();
+        }
+      };
+
+      async function loadQueue() {
+        const { data, error } = await supabase
+          .from("reservations")
+          .select("*, machines(name), profiles(first_name,last_name)")
+          .eq("status", "en_attente")
+          .order("start_time");
+        if (error) return toast(msg, error.message);
+        document.getElementById("queue").innerHTML =
+          (data || [])
+            .map(
+              (r) => `<article class="bg-white border border-stone-200 rounded-xl p-4">
+                <div class="flex flex-wrap justify-between gap-2">
+                  <p class="font-semibold">${escapeHtml(r.machines?.name)}</p>
+                  ${statusBadge(r.status)}
+                </div>
+                <p class="text-sm text-stone-600">${escapeHtml(r.profiles?.first_name)} ${escapeHtml(r.profiles?.last_name)} · ${fmtDate(r.start_time)} → ${fmtDate(r.end_time)}</p>
+                <p class="text-sm mt-2">${escapeHtml(r.goal)}</p>
+                <div class="mt-3 flex flex-wrap gap-2">
+                  <button data-ok="${r.id}" class="bg-emerald-600 text-white text-sm font-semibold px-3 py-2 rounded-lg">Confirmer</button>
+                  <button data-no="${r.id}" class="bg-red-600 text-white text-sm font-semibold px-3 py-2 rounded-lg">Refuser</button>
+                </div>
+              </article>`
+            )
+            .join("") || "<p class='text-stone-500'>Aucune demande en attente.</p>";
+        document.querySelectorAll("[data-ok]").forEach((b) => {
+          b.onclick = async () => {
+            const { error } = await supabase.from("reservations").update({ status: "confirmee", refusal_reason: null }).eq("id", b.dataset.ok);
+            if (error) toast(msg, error.message);
+            else loadQueue();
+          };
+        });
+        document.querySelectorAll("[data-no]").forEach((b) => {
+          b.onclick = async () => {
+            const reason = prompt("Motif du refus ?");
+            if (reason == null || !reason.trim()) return;
+            const { error } = await supabase
+              .from("reservations")
+              .update({ status: "refusee", refusal_reason: reason.trim() })
+              .eq("id", b.dataset.no);
+            if (error) toast(msg, error.message);
+            else loadQueue();
+          };
+        });
+      }
+      await loadMachines();
+      await loadQueue();
+    }
+  </script>
+</body>
+</html>
