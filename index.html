@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FabLab — Atelier de fabrication numérique</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { theme: { extend: { colors: { shop: "#f97316" } } } };
+  </script>
+</head>
+<body class="bg-stone-100 text-stone-900 min-h-screen">
+  <div id="nav"></div>
+  <main class="max-w-6xl mx-auto px-4 py-10">
+    <section class="rounded-2xl bg-stone-900 text-stone-50 px-6 py-12 md:px-12">
+      <p class="text-orange-400 text-sm font-semibold uppercase tracking-widest">Atelier technique</p>
+      <h1 class="mt-2 text-3xl md:text-5xl font-bold leading-tight">Le FabLab de l’établissement</h1>
+      <p class="mt-4 max-w-2xl text-stone-300">
+        Imprimantes 3D, découpe laser, CNC et électronique. Réserve un créneau, un FabManager valide, tu fabriques.
+        Horaires : lun–ven 8h–18h, samedi 9h–13h.
+      </p>
+      <div class="mt-8 flex flex-wrap gap-3">
+        <a href="machines.html" class="bg-orange-500 hover:bg-orange-600 text-white font-semibold px-5 py-2.5 rounded-lg">Voir les machines</a>
+        <a href="connexion.html" class="bg-white/10 hover:bg-white/15 px-5 py-2.5 rounded-lg">Créer un compte</a>
+      </div>
+    </section>
+    <h2 class="mt-12 text-xl font-bold">Machines</h2>
+    <p id="err" class="hidden mt-3"></p>
+    <div id="grid" class="mt-4 grid sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+  </main>
+  <div id="footer"></div>
+  <script src="js/config.js"></script>
+  <script type="module">
+    import { supabase, supabaseReady, getSession, renderNav, bindNav, requireConfigBanner, machineCard, toast, layoutShell } from "./js/app.js";
+    requireConfigBanner();
+    const { user, profile } = await getSession();
+    document.getElementById("nav").innerHTML = renderNav("home", { user, profile });
+    document.getElementById("footer").innerHTML = layoutShell();
+    bindNav();
+    if (!supabaseReady) {
+      document.getElementById("grid").innerHTML = `<p class="text-stone-500">Aucune donnée : configure Supabase.</p>`;
+    } else {
+      const { data, error } = await supabase.from("machines").select("*").order("name");
+      if (error) toast(document.getElementById("err"), error.message);
+      else document.getElementById("grid").innerHTML = (data || []).map(machineCard).join("") || "<p class='text-stone-500'>Aucune machine pour le moment.</p>";
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Machine — FabLab</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-stone-100 text-stone-900 min-h-screen">
+  <div id="nav"></div>
+  <main class="max-w-3xl mx-auto px-4 py-8" id="main"></main>
+  <div id="footer"></div>
+  <script src="js/config.js"></script>
+  <script type="module">
+    import {
+      supabase, supabaseReady, getSession, renderNav, bindNav, requireConfigBanner,
+      statusBadge, toast, layoutShell, next7Days, slotsForDay, overlaps, fmtDate, escapeHtml, OPENING
+    } from "./js/app.js";
+    requireConfigBanner();
+    const { user, profile } = await getSession();
+    document.getElementById("nav").innerHTML = renderNav("machines", { user, profile });
+    document.getElementById("footer").innerHTML = layoutShell();
+    bindNav();
+    const id = new URLSearchParams(location.search).get("id");
+    const main = document.getElementById("main");
+    if (!supabaseReady || !id) {
+      main.innerHTML = "<p class='text-stone-600'>Machine introuvable ou Supabase non configuré.</p>";
+    } else {
+      const { data: m, error } = await supabase.from("machines").select("*").eq("id", id).single();
+      if (error || !m) {
+        main.innerHTML = "<p>Machine introuvable.</p>";
+      } else {
+        document.title = m.name + " — FabLab";
+        const from = new Date();
+        from.setHours(0, 0, 0, 0);
+        const to = new Date(from);
+        to.setDate(to.getDate() + 8);
+        const { data: busy } = await supabase
+          .from("reservation_slots")
+          .select("start_time,end_time,status")
+          .eq("machine_id", id)
+          .in("status", ["en_attente", "confirmee"])
+          .gte("end_time", from.toISOString())
+          .lt("start_time", to.toISOString());
+
+        const daysHtml = next7Days()
+          .map((d) => {
+            const closed = !OPENING[d.getDay()];
+            const label = d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "short" });
+            if (closed) return `<div class="border border-stone-200 rounded-lg p-3 bg-white"><p class="font-medium capitalize">${label}</p><p class="text-sm text-stone-500">Fermé</p></div>`;
+            const slots = slotsForDay(d, Math.min(m.max_duration_minutes, 60));
+            const free = slots.filter((s) => !(busy || []).some((b) => overlaps(s.start, s.end, new Date(b.start_time), new Date(b.end_time))));
+            return `<div class="border border-stone-200 rounded-lg p-3 bg-white">
+              <p class="font-medium capitalize">${label}</p>
+              <p class="text-sm text-stone-600 mt-1">${free.length} créneau(x) libre(s) / ${slots.length}</p>
+            </div>`;
+          })
+          .join("");
+
+        const canBook = m.status === "disponible";
+        main.innerHTML = `
+          <a href="machines.html" class="text-sm text-orange-600">← Machines</a>
+          <div class="mt-3 flex flex-wrap items-start justify-between gap-3">
+            <h1 class="text-2xl font-bold">${escapeHtml(m.name)}</h1>
+            ${statusBadge(m.status)}
+          </div>
+          <p class="text-sm text-stone-500 mt-1">${escapeHtml(m.category)} · Niveau ${escapeHtml(m.level_required)} · max ${m.max_duration_minutes} min</p>
+          <p class="mt-4 text-stone-700">${escapeHtml(m.description)}</p>
+          <section class="mt-6 rounded-xl border border-orange-200 bg-orange-50 p-4">
+            <h2 class="font-semibold text-orange-950">Règles de sécurité</h2>
+            <p class="mt-2 text-sm text-orange-950 whitespace-pre-line">${escapeHtml(m.safety_rules)}</p>
+          </section>
+          <h2 class="mt-8 font-semibold">Disponibilité (7 prochains jours)</h2>
+          <div class="mt-3 grid sm:grid-cols-2 gap-3">${daysHtml}</div>
+          <div class="mt-8">
+            ${canBook
+              ? `<a href="${user ? "reservation.html?machine=" + m.id : "connexion.html"}" class="inline-block bg-orange-500 hover:bg-orange-600 text-white font-semibold px-5 py-3 rounded-lg">Réserver cette machine</a>`
+              : `<p class="text-stone-600">Machine indisponible (panne ou maintenance).</p>`}
+          </div>
+        `;
+      }
+    }
+  </script>
+</body>
+</html>
